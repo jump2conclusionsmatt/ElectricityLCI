@@ -1,3 +1,7 @@
+"""
+Functions to perform life cycle impact analysis on electricitylci results
+"""
+
 import pandas as pd
 import lciafmt
 import logging
@@ -7,6 +11,30 @@ traci = None
 traci_mapped = None
 
 def convert_inventory_to_traci_impacts(df, group_cols=None):
+    """This function applies the life cycle impact factors to the emissions in
+    the dataframe.
+    
+    Parameters
+    ----------
+    df : dataframe
+        The dataframe with emissions contained in columns 'FlowAmount' or 'Emission_factor'
+        or both. This function will multiply these quantities by the impact
+        factor provided by the life cycle impact analysis formatter.
+    group_cols : list, optional
+        An optional list of columsn to perform a groupby, by default None.
+        For example, one could group the emissions by FuelCategory, such that impact
+        analysis results contain the the results for all parts of the life cylce in that 
+        category e.g., gas power plants plus natural gas extraction and power plant
+        construction. If 'None', the function will keep the passed dataframe in
+        tact.
+    
+    Returns
+    -------
+    dictionary
+        A dictionary containing dataframes for each of the life cycle impact
+        categories in TRACI. Dictionary keys are the names of the impact
+        categories.
+    """
     global traci
     global traci_mapped
     if traci is None and traci_mapped is None:
