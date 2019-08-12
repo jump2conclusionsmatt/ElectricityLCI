@@ -84,7 +84,7 @@ def impact_plot_comparison(df, fuelcat="all", subregion="BA", sort=False):
             kind="bar", stacked=True, figsize=(width, 10)
         )
     else:
-        impact_plot = df_generic_grouped[[]].plot(
+        impact_plot = df_generic_grouped.plot(
             kind="bar", stacked=True, figsize=(width, 10)
         )
     return impact_plot
