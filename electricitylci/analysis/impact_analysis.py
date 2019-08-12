@@ -1,14 +1,18 @@
 import pandas as pd
 import lciafmt
 import logging
-
 module_logger = logging.getLogger("impact_analysis.py")
 
+traci = None
+traci_mapped = None
 
 def convert_inventory_to_traci_impacts(df, group_cols=None):
-    module_logger.info(f"Getting traci impact factors...")
-    traci = lciafmt.get_traci()
-    traci_mapped = lciafmt.map_flows(traci)
+    global traci
+    global traci_mapped
+    if traci is None and traci_mapped is None:
+        module_logger.info(f"Getting traci impact factors...")
+        traci = lciafmt.get_traci()
+        traci_mapped = lciafmt.map_flows(traci)
     module_logger.info("Applying factors to passed dataframe...")
     impact_dfs = {}
     if group_cols is None:
