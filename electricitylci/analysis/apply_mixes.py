@@ -34,14 +34,23 @@ def apply_generation_mix(genmix_df,agg_df,subregion="BA"):
         produces 1 MWh total electricity from all associated fuel categories.
     """
     cat_column = subregion_col(subregion)
-    agg_genmix_df=pd.merge(
-            left=agg_df,
-            right = genmix_df[["Subregion","FuelCategory","Generation_Ratio"]],
-            left_on=cat_column+["FuelCategory"],
-            right_on=["Subregion","FuelCategory"],
-            how="left")
+    print(cat_column)
+    if cat_column is not None:
+        print("somehow I made it in here!")
+        agg_genmix_df=pd.merge(
+                left=agg_df,
+                right = genmix_df[["Subregion","FuelCategory","Generation_Ratio"]],
+                left_on=cat_column+["FuelCategory"],
+                right_on=["Subregion","FuelCategory"],
+                how="left")
+        agg_genmix_df.drop(columns=["Subregion"],inplace=True)
+    else:
+        agg_genmix_df=pd.merge(
+                left=agg_df,
+                right=genmix_df[["FuelCategory","Generation_Ratio"]],
+                on=["FuelCategory"],
+                how="left")
     agg_genmix_df["Emission_factor"]=agg_genmix_df["Emission_factor"]*agg_genmix_df["Generation_Ratio"]
-    agg_genmix_df.drop(columns=["Subregion"],inplace=True)
     return agg_genmix_df
 
 def apply_consumption_mix(consmix_df,genmix_agg_df,subregion="BA",target_regions=[]):
@@ -81,8 +90,14 @@ def apply_consumption_mix(consmix_df,genmix_agg_df,subregion="BA",target_regions
     if target_regions==[]:
         target_regions=genmix_agg_df[cat_column].unique()
     cons_mixes_dict={}
+    if subregion=="BA":
+        import_col="import_name"
+        export_col="export_name"
+    elif subregion=="FERC":
+        import_col="import ferc region"
+        export_col="export ferc region"
     for reg in target_regions:
-        mini_consmix=consmix_df.loc[consmix_df["import_name"]==reg,["export_name","fraction"]].set_index("export_name")
+        mini_consmix=consmix_df.loc[consmix_df[import_col]==reg,[export_col,"fraction"]].set_index(export_col)
         mini_consmix.loc[mini_consmix["fraction"]==0,"fraction"]=float("nan")
         region_df=genmix_agg_df.copy()
         region_df["consumption_fraction"]=region_df[cat_column].map(mini_consmix["fraction"])

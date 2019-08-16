@@ -39,7 +39,7 @@ def convert_inventory_to_traci_impacts(df, group_cols=None):
     global traci_mapped
     if traci is None and traci_mapped is None:
         module_logger.info(f"Getting traci impact factors...")
-        traci = lciafmt.get_traci()
+        traci = lciafmt.get_method('Traci 2.1')
         traci_mapped = lciafmt.map_flows(traci)
     module_logger.info("Applying factors to passed dataframe...")
     impact_dfs = {}
@@ -102,6 +102,8 @@ def convert_inventory_to_traci_impacts(df, group_cols=None):
                     f"Passed dataframe does not have 'Emission_factor' column"
                 )
             impact_df_grouped.reset_index(inplace=True)
+            print(impact_df_grouped.index)
+            print(impact_df.columns)
             columns_to_rename = [
                 x for x in impact_df_grouped.columns if "level_" in x
             ]
@@ -110,6 +112,8 @@ def convert_inventory_to_traci_impacts(df, group_cols=None):
                 impact_df_grouped.rename(
                     columns={col: group_cols[level_num]}, inplace=True
                 )
+            impact_df_grouped.reset_index(drop=True)
+            print(impact_df_grouped.columns)
             impact_df_grouped.sort_values(by=group_cols, inplace=True)
             impact_dfs[impact_category] = impact_df_grouped
         else:
