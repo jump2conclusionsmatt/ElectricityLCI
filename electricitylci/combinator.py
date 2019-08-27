@@ -222,6 +222,7 @@ def concat_map_upstream_databases(*arg):
     upstream_mapped_df["FuelCategory"] = upstream_mapped_df[
         "FuelCategory"
     ].str.upper()
+    upstream_mapped_df.loc[upstream_mapped_df["FuelCategory"]=="GEO","FuelCategory"]="GEOTHERMAL"
     upstream_mapped_df["ElementaryFlowPrimeContext"] = "emission"
     upstream_mapped_df["Source"] = "netl"
     upstream_mapped_df["Year"] = eia_gen_year
@@ -289,6 +290,7 @@ def concat_clean_upstream_and_plant(pl_df, up_df):
     #This allows construction impacts to be aligned to a power plant type - 
     #not as import in openLCA but for analyzing results outside of openLCA.
     combined_df.loc[combined_df["FuelCategory"]=="CONSTRUCTION","FuelCategory"]=float("nan")
+    combined_df.loc[combined_df["FuelCategory"]=="GEO","FuelCategory"]="GEOTHERMAL"
     combined_df = fill_nans(combined_df)
     # The hard-coded cutoff is a workaround for now. Changing the parameter
     # to 0 in the config file allowed the inventory to be kept for generators
