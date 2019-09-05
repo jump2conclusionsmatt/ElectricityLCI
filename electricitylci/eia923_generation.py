@@ -11,6 +11,7 @@ from electricitylci.model_config import (
     filter_on_efficiency,
     filter_on_min_plant_percent_generation_from_primary_fuel,
     min_plant_percent_generation_from_primary_fuel_category,
+    keep_mixed_plant_category,
     filter_non_egrid_emission_on_NAICS,
     egrid_facility_efficiency_filters,
     inventories_of_interest,
@@ -63,14 +64,14 @@ def eia923_download(year, save_path):
     """
     Download and unzip one year of EIA 923 annual data to a subfolder
     of the data directory
-    
+
     Parameters
     ----------
     year : int or str
         The year of data to download and save
     save_path : path or str
         A folder where the zip file contents should be extracted
-    
+
     """
     current_url = EIA923_BASE_URL + "xls/f923_{}.zip".format(year)
     archive_url = EIA923_BASE_URL + "archive/xls/f923_{}.zip".format(year)
@@ -130,10 +131,10 @@ def eia923_download_extract(
 ):
     """
     Download (if necessary) and extract a single year of generation/fuel
-    consumption data from EIA-923. 
-    
+    consumption data from EIA-923.
+
     Data are grouped by plant level
-    
+
     Parameters
     ----------
     year : int or str
@@ -141,7 +142,7 @@ def eia923_download_extract(
     group_cols : list, optional
         The columns from EIA923 generation and fuel sheet to use when grouping
         generation and fuel consumption data.
-    
+
     """
     expected_923_folder = join(data_dir, "f923_{}".format(year))
 
@@ -251,7 +252,7 @@ def eia923_primary_fuel(
     generation (wind, sun, hydro, etc), so an additional step to determine
     the primary fuel of these plants if 'Total Fuel Consumption MMBtu' is
     selected as the method.
-    
+
     Parameters
     ----------
     year : int
@@ -260,7 +261,7 @@ def eia923_primary_fuel(
         The method to use when determining the primary fuel of a power plant
         (the default is 'Net Generation (Megawatthours)', and the alternative
         is 'Total Fuel Consumption MMBtu')
-    
+
     """
     if year:
         eia923_gen_fuel = eia923_download_extract(year)
@@ -365,7 +366,7 @@ def build_generation_data(
     from the primary fuel (if set in the config file). The returned
     dataframe also includes the balancing authority for every power
     plant.
-    
+
     Parameters
     ----------
     egrid_facilities_to_include : list, optional
@@ -374,7 +375,7 @@ def build_generation_data(
         Years of generation data to include in the output (default is None,
         which builds a list from the inventories of interest and eia_gen_year
         parameters)
-    
+
     Returns
     ----------
     DataFrame
@@ -403,7 +404,7 @@ def build_generation_data(
                 ]
             if filter_on_efficiency:
                 final_gen_df = efficiency_filter(final_gen_df)
-            if filter_on_min_plant_percent_generation_from_primary_fuel:
+            if filter_on_min_plant_percent_generation_from_primary_fuel and not keep_mixed_plant_category:
                 final_gen_df = final_gen_df.loc[
                     final_gen_df["primary fuel percent gen"]
                     >= min_plant_percent_generation_from_primary_fuel_category,
@@ -626,4 +627,3 @@ def eia923_sched8_aec(year):
 
 if __name__ == "__main__":
     rawr = eia923_sched8_aec(2016)
-
