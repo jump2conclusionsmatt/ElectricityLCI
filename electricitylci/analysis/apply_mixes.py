@@ -36,7 +36,6 @@ def apply_generation_mix(genmix_df,agg_df,subregion="BA"):
     cat_column = subregion_col(subregion)
     print(cat_column)
     if cat_column is not None:
-        print("somehow I made it in here!")
         agg_genmix_df=pd.merge(
                 left=agg_df,
                 right = genmix_df[["Subregion","FuelCategory","Generation_Ratio"]],
