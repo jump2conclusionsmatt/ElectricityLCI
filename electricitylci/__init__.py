@@ -555,3 +555,27 @@ def write_consumption_mix_to_dict(cons_mix_df, dist_mix_dict, subregion=None):
         cons_mix_df, dist_mix_dict, subregion=subregion
     )
     return cons_mix_dict
+
+def add_flows_units_props_to_jsonld(*inventory_dataframes):
+    import fedelemflowlist
+    import zipfile
+    from electricitylci.globals import data_dir
+    total_df = pd.concat(inventory_dataframes)
+    fedflows = fedelemflowlist.get_flows()
+    unique_flow_ids = list(total_df["FlowUUID"].unique())
+    filtered_fedflows = fedflows.loc[fedflows["Flow UUID"].isin(unique_flow_ids),:]
+    fedelemflowlist.write_jsonld(filtered_fedflows,f"{output_dir}/temp_flow_file_can_be_deleted.zip")
+    source_zip = zipfile.ZipFile(file=f"{data_dir}/units_flow_properties.zip")
+    targetzip = zipfile.ZipFile(file=namestr,mode="a")
+    for zip_files in source_zip.namelist():
+        src_file = source_zip.read(zip_files)
+        targetzip.writestr(zip_files,src_file)
+    source_zip.close()
+    flow_source_zip = zipfile.ZipFile(file=f"{output_dir}/temp_flow_file_can_be_deleted.zip")
+    for zip_files in flow_source_zip.namelist():
+        src_file = flow_source_zip.read(zip_files)
+        targetzip.writestr(zip_files, src_file)
+    targetzip.close()
+    flow_source_zip.close()
+        
+    

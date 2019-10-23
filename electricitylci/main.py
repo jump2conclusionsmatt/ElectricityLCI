@@ -104,7 +104,9 @@ def main():
         sur_con_mix_dict = electricitylci.write_process_dicts_to_jsonld(sur_con_mix_dict)
         dist_dict = fill_default_provider_uuids(dist_dict, sur_con_mix_dict)
         dist_dict = electricitylci.write_process_dicts_to_jsonld(dist_dict)
-
+    
+    electricitylci.add_flows_units_props_to_jsonld(generation_mix_df,upstream_df)
+    
     logger.info(
         f'JSON-LD files have been saved in the "output" folder with the full path '
         f'{electricitylci.namestr}'
