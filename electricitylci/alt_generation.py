@@ -5,7 +5,7 @@ Created on Tue Jun  4 12:07:46 2019
 
 @author: jamiesom
 """
-from electricitylci.model_config import replace_egrid, use_primaryfuel_for_coal
+from electricitylci.model_config import replace_egrid, use_primaryfuel_for_coal, model_specs
 from electricitylci.elementaryflows import map_emissions_to_fedelemflows
 import pandas as pd
 import numpy as np
@@ -13,6 +13,7 @@ from electricitylci.globals import output_dir
 from datetime import datetime
 from electricitylci.dqi import lookup_score_with_bound_key
 from scipy.stats import t, norm
+from scipy.special import erfinv
 import ast
 import logging
 
@@ -56,6 +57,24 @@ def aggregate_facility_flows(df):
         "Compartment_path",
         "stage_code"
     ]
+    def wtd_mean(pdser, total_db, cols):
+        try:
+            wts = total_db.loc[pdser.index, "FlowAmount"]
+            result = np.average(pdser, weights=wts)
+        except:
+            module_logger.debug(
+                f"Error calculating weighted mean for {pdser.name}-"
+                f"likely from 0 FlowAmounts"
+                #f"{total_db.loc[pdser.index[0],cols]}"
+            )
+            try:
+                with np.errstate(all='raise'):
+                    result = np.average(pdser)
+            except ArithmeticError or ValueError or FloatingPointError:    
+                result = float("nan")
+        return result
+
+    wm = lambda x: wtd_mean(x, df, groupby_cols)
     emissions = df["Compartment"].isin(emission_compartments)
     df_emissions = df[emissions]
     df_nonemissions = df[~emissions]
@@ -63,8 +82,12 @@ def aggregate_facility_flows(df):
     df_red = df_emissions.drop(df_emissions[df_dupes].index)
     group_db = (
         df_emissions.loc[df_dupes, :]
-        .groupby(groupby_cols, as_index=False)["FlowAmount"]
-        .sum()
+        .groupby(groupby_cols, as_index=False).agg(
+                {
+                        "FlowAmount":"sum",
+                        "ReliabilityScore":wm
+                }
+        )
     )
     #    group_db=df.loc[emissions,:].groupby(groupby_cols,as_index=False)['FlowAmount'].sum()
     group_db_merge = group_db.merge(
@@ -74,7 +97,7 @@ def aggregate_facility_flows(df):
         suffixes=("", "_right"),
     )
     try:
-        delete_cols = ["FlowAmount_right"]
+        delete_cols = ["FlowAmount_right","ReliabilityScore_right"]
         group_db_merge.drop(columns=delete_cols, inplace=True)
     except KeyError:
         pass
@@ -394,9 +417,13 @@ def create_generation_process_df():
             cems_df, emissions_and_waste_for_selected_egrid_facilities
         )
     else:
-        generation_data = build_generation_data(
-            egrid_facilities_to_include=egrid_facilities_to_include
-        )
+        from electricitylci.egrid_filter import electricity_for_selected_egrid_facilities
+        generation_data=electricity_for_selected_egrid_facilities
+        generation_data["Year"]=model_specs["egrid_year"]
+        generation_data["FacilityID"]=generation_data["FacilityID"].astype(int)
+#        generation_data = build_generation_data(
+#            egrid_facilities_to_include=egrid_facilities_to_include
+#        )
     emissions_and_waste_for_selected_egrid_facilities.drop(
         columns=["FacilityID"]
     )
@@ -445,7 +472,7 @@ def create_generation_process_df():
         final_database.loc[
             final_database["FuelCategory"] == "COAL", ["Final_fuel_agg"]
         ] = final_database.loc[
-            final_database["FuelCategory"] == "COAL", "Primary_Fuel"
+            final_database["FuelCategory"] == "COAL", "PrimaryFuel"
         ]
 
     try:
@@ -519,9 +546,6 @@ def aggregate_data(total_db, subregion="BA"):
     from electricitylci.aggregation_selector import subregion_col
 
     def geometric_mean(p_series, df, cols):
-        # I think I actually need to replace this with the function contained in
-        # process_exchange_aggregator_uncertainty.py. The approach to add 1 will
-        # also lead to some large errors when dealing with small numbers.
         # Alternatively we can use scipy.stats.lognorm to fit a distribution
         # and provide the parameters
         if (len(p_series) > 3) & (p_series.quantile(0.5) > 0):
@@ -549,7 +573,7 @@ def aggregate_data(total_db, subregion="BA"):
                     return None
                 l = len(data)
                 try:
-                    sd = np.std(log_data)
+                    sd = np.std(log_data)/np.sqrt(l)
                     sd2 = sd ** 2
                 except ArithmeticError or ValueError or FloatingPointError:
                     module_logger.debug("Problem with std function")
@@ -592,7 +616,7 @@ def aggregate_data(total_db, subregion="BA"):
             return None
 
     def calc_geom_std(df):
-
+        module_logger.debug(f"{df['Subregion']}-{df['FuelCategory']}-{df['FlowName']}")
         if df["uncertaintyLognormParams"] is None:
             return None, None
         if isinstance(df["uncertaintyLognormParams"], str):
@@ -605,33 +629,51 @@ def aggregate_data(total_db, subregion="BA"):
                 f"{df['uncertaintyLognormParams']}"
             )
             return None, None
+        
         if length != 3:
             module_logger.info(
                 f"Error estimating standard deviation - length: {len(params)}"
             )
-        try:
-            geomean = df["Emission_factor"]
-            geostd = np.exp(
-                (
-                    np.log(df["uncertaintyLognormParams"][2])
-                    - np.log(df["Emission_factor"])
-                )
-                / norm.ppf(0.95)
-            )
-        except ArithmeticError:
-            module_logger.info("Error estimating standard deviation")
-            return None, None
-        if (
-            (geostd is np.inf)
-            or (geostd is np.NINF)
-            or (geostd is np.nan)
-            or (geostd is float("nan"))
-            or str(geostd) == "nan"
-        ):
-            return None, None
-        if geostd * geomean > df["uncertaintyMax"]:
-            return None, None
-        return str(geomean), str(geostd)
+        else:
+            #In some cases, the final emission factor is far different than the
+            #geometric mean of the individual emission factor. Depending on the 
+            #severity, this could be a clear sign of outliers having a large impact
+            #on the final emission factor. When the uncertainty is generated for
+            #these cases, the results can be nonsensical - hence we skip them. A more
+            #agressive approach would be to re-assign the emission factor as well.
+            if df["Emission_factor"]>df["uncertaintyLognormParams"][2]:
+                return None, None
+            else:
+                c=np.log(df["uncertaintyLognormParams"][2])-np.log(df["Emission_factor"])
+                b=-2**0.5*erfinv(2*0.95-1)
+                a=0.5
+                sd1=(-b+(b**2-4*a*c)**0.5)/(2*a)
+                sd2=(-b-(b**2-4*a*c)**0.5)/(2*a)
+                if sd1 is not float("nan") and sd2 is not float("nan"):
+                    if sd1<sd2:
+                        geostd=np.exp(sd1)
+                        geomean=np.exp(np.log(df["Emission_factor"])-0.5*sd1**2)
+                    else:
+                        geostd=np.exp(sd2)
+                        geomean=np.exp(np.log(df["Emission_factor"])-0.5*sd2**2)
+                elif sd1 is not float("nan"):
+                    geostd=np.exp(sd1)
+                    geomean=np.exp(np.log(df["Emission_factor"])-0.5*sd1**2)
+                elif sd2 is not float("nan"):
+                    geostd=np.exp(sd2)
+                    geomean=np.exp(np.log(df["Emission_factor"])-0.5*sd2**2)
+                else:
+                    return None, None
+                if (
+                    (geostd is np.inf)
+                    or (geostd is np.NINF)
+                    or (geostd is np.nan)
+                    or (geostd is float("nan"))
+                    or str(geostd) == "nan"
+                    or (geostd == 0)
+                ):
+                    return None, None
+                return str(geomean), str(geostd)
 
     region_agg = subregion_col(subregion)
     fuel_agg = ["FuelCategory"]
@@ -657,6 +699,7 @@ def aggregate_data(total_db, subregion="BA"):
     total_db, electricity_df = calculate_electricity_by_source(
         total_db, subregion
     )
+    total_db.replace(to_replace=0,value=1E-15,inplace=True)
     total_db = add_data_collection_score(total_db, electricity_df, subregion)
     total_db["facility_emission_factor"] = (
         total_db["FlowAmount"] / total_db["Electricity"]
@@ -665,14 +708,19 @@ def aggregate_data(total_db, subregion="BA"):
 
     def wtd_mean(pdser, total_db, cols):
         try:
-            wts = total_db.loc[pdser.index, "Electricity"]
+            wts = total_db.loc[pdser.index, "FlowAmount"]
             result = np.average(pdser, weights=wts)
         except:
-            module_logger.info(
+            module_logger.debug(
                 f"Error calculating weighted mean for {pdser.name}-"
-                f"{total_db.loc[pdser.index[0],cols]}"
+                f"likely from 0 FlowAmounts"
+                #f"{total_db.loc[pdser.index[0],cols]}"
             )
-            result = float("nan")
+            try:
+                with np.errstate(all='raise'):
+                    result = np.average(pdser)
+            except ArithmeticError or ValueError or FloatingPointError:    
+                result = float("nan")
         return result
 
     wm = lambda x: wtd_mean(x, total_db, groupby_cols)
@@ -756,6 +804,9 @@ def aggregate_data(total_db, subregion="BA"):
                 "uncertaintyLognormParams",
                 "uncertaintyMin",
                 "uncertaintyMax",
+                "FuelCategory",
+                "Subregion",
+                "FlowName"
             ]
         ].apply(calc_geom_std, axis=1)
     )
