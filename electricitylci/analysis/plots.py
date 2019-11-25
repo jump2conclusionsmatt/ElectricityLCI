@@ -2,13 +2,19 @@
 
 import matplotlib.pyplot as plt
 import seaborn as sns
-from electricitylci.aggregation_selector import subregion_col, subregion_name
+from electricitylci.aggregation_selector import subregion_col
 import electricitylci.analysis.utils as an_util
 import pandas as pd
 import numpy as np
 from itertools import groupby
 
-
+subregion_names={
+    "Subregion":"eGRID",
+    "NERC":"NERC",
+    "Balancing Authority Name":"BA",
+    "FERC_Region":"FERC",
+    "EIA_Region":"EIA",
+}
 def _get_labels(units_str):
     """Internal function to return the name of the impact category given
     the units string provided in the dataframe. Currently only works
@@ -74,7 +80,7 @@ def impact_plot_comparison(
     """
 
     cat_column = subregion_col(subregion)
-    cat_label=subregion_name(subregion)
+    cat_label=subregion_names[cat_column[0]]
     if fuelcat != "ALL":
         df_red = df.loc[df["FuelCategory"] == fuelcat.upper(), :].copy()
         df_generic = an_util.apply_generic_stage_names(
