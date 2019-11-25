@@ -85,21 +85,25 @@ def apply_consumption_mix(consmix_df,genmix_agg_df,subregion="BA",target_regions
         emissions for the specified target_region(s). Each dataframe contains
         only those regions with non-zero contributions to the consumption mix.
     """
-    cat_column = subregion_col(subregion)[0]
-    if target_regions==[]:
-        target_regions=genmix_agg_df[cat_column].unique()
-    cons_mixes_dict={}
+    cat_column = subregion_col("BA")[0]
     if subregion=="BA":
         import_col="import_name"
         export_col="export_name"
     elif subregion=="FERC":
         import_col="import ferc region"
-        export_col="export ferc region"
+        export_col="export_name"
+    elif subregion=="US":
+        export_col="export_name"
+        consmix_df["import_name"]="US"
+        import_col="import_name"
+    if target_regions==[]:
+        target_regions=consmix_df[import_col].unique()
+    cons_mixes_dict={}
     for reg in target_regions:
         mini_consmix=consmix_df.loc[consmix_df[import_col]==reg,[export_col,"fraction"]].set_index(export_col)
         mini_consmix.loc[mini_consmix["fraction"]==0,"fraction"]=float("nan")
         region_df=genmix_agg_df.copy()
-        region_df["consumption_fraction"]=region_df[cat_column].map(mini_consmix["fraction"])
+        region_df["consumption_fraction"]=region_df["Balancing Authority Name"].map(mini_consmix["fraction"])
         region_df["Emission_factor"]=region_df["Emission_factor"]*region_df["consumption_fraction"]
         region_df.dropna(subset=["Emission_factor"],inplace=True)
         cons_mixes_dict[reg]=region_df

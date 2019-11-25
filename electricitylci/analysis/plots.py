@@ -243,7 +243,7 @@ def plot_grouped_fuels(df, subregion="BA"):
         impact analysis contained in the passed dataframe. 
     """
     cat_column = subregion_col(subregion)
-    sub_name = subregion_name(subregion)
+    sub_name = subregion_names[cat_column[0]]
     df_generic = an_util.apply_generic_stage_names(df.copy())
     df_generic_grouped = df_generic.groupby(
         cat_column + ["FuelCategory", "generic_stage_name"]
