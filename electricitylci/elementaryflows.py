@@ -1,6 +1,5 @@
 import pandas as pd
 import fedelemflowlist
-from electricitylci.model_config import inventories, fedelemflowlist_version
 
 # flowlist = fedelemflowlist.get_flowlist()
 mapping_to_fedelemflows = fedelemflowlist.get_flowmapping()
@@ -65,7 +64,7 @@ def map_emissions_to_fedelemflows(df_with_flows_compartments):
 
 
 # Manually mapping of input 'Heat' to energy types for renewables
-#!Still need to consider amount conversion
+# !Still need to consider amount conversion
 def map_renewable_heat_flows_to_fedelemflows(df_with_flows_compart_direction):
 
     # For all other fuel sources assume techonosphere flows and set to null

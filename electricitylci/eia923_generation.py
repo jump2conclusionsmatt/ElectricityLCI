@@ -6,17 +6,8 @@ from os.path import join
 import requests
 from electricitylci.globals import data_dir, EIA923_BASE_URL, FUEL_CAT_CODES
 from electricitylci.utils import download_unzip, find_file_in_folder
-from electricitylci.model_config import (
-    include_only_egrid_facilities_with_positive_generation,
-    filter_on_efficiency,
-    filter_on_min_plant_percent_generation_from_primary_fuel,
-    min_plant_percent_generation_from_primary_fuel_category,
-    keep_mixed_plant_category,
-    filter_non_egrid_emission_on_NAICS,
-    egrid_facility_efficiency_filters,
-    inventories_of_interest,
-    eia_gen_year,
-)
+from electricitylci.model_config import model_specs
+
 from electricitylci.eia860_facilities import eia860_balancing_authority
 from functools import lru_cache
 
@@ -192,14 +183,11 @@ def eia923_download_extract(
             eia = pd.read_csv(
                 csv_path,
                 dtype={"Plant Id": str, "YEAR": str, "NAICS Code": str},
-                low_memory=False
+                low_memory=False,
             )
 
         else:
-            print(
-                "Loading data from previously downloaded excel file,",
-                " how did the csv file get deleted?",
-            )
+
             eia923_path, eia923_name = find_file_in_folder(
                 folder_path=expected_923_folder,
                 file_pattern_match=["2_3_4_5", "xlsx"],
@@ -307,9 +295,14 @@ def eia923_primary_fuel(
         / primary_fuel["total_gen"]
         * 100
     )
-
+    primary_fuel["primary fuel percent gen"].fillna(value=0, inplace=True)
     primary_fuel["FuelCategory"] = group_fuel_categories(primary_fuel)
-
+    if model_specs.keep_mixed_plant_category:
+        primary_fuel.loc[
+            primary_fuel["primary fuel percent gen"]
+            < model_specs.min_plant_percent_generation_from_primary_fuel_category,
+            "FuelCategory",
+        ] = "MIXED"
     primary_fuel.rename(
         columns={"Reported Fuel Type Code": "PrimaryFuel"}, inplace=True
     )
@@ -347,7 +340,7 @@ def calculate_plant_efficiency(gen_fuel_data):
     return plant_total
 
 
-def efficiency_filter(df):
+def efficiency_filter(df, egrid_facility_efficiency_filters):
 
     upper = egrid_facility_efficiency_filters["upper_efficiency"]
     lower = egrid_facility_efficiency_filters["lower_efficiency"]
@@ -358,8 +351,8 @@ def efficiency_filter(df):
 
 
 def build_generation_data(
-    egrid_facilities_to_include=None, generation_years=None
-):
+    egrid_facilities_to_include=None, generation_years=None,
+    ):
     """
     Build a dataset of facility-level generation using EIA923. This
     function will apply filters for positive generation, generation
@@ -388,7 +381,7 @@ def build_generation_data(
     if generation_years is None:
         # Use the years from inventories of interest
         generation_years = set(
-            list(inventories_of_interest.values()) + [eia_gen_year]
+            list(model_specs.inventories_of_interest.values()) + [model_specs.eia_gen_year]
         )
 
     df_list = []
@@ -399,16 +392,19 @@ def build_generation_data(
 
         final_gen_df = gen_efficiency.merge(primary_fuel, on="Plant Id")
         if not egrid_facilities_to_include:
-            if include_only_egrid_facilities_with_positive_generation:
+            if model_specs.include_only_egrid_facilities_with_positive_generation:
                 final_gen_df = final_gen_df.loc[
                     final_gen_df["Net Generation (Megawatthours)"] >= 0, :
                 ]
-            if filter_on_efficiency:
-                final_gen_df = efficiency_filter(final_gen_df)
-            if filter_on_min_plant_percent_generation_from_primary_fuel and not keep_mixed_plant_category:
+            if model_specs.filter_on_efficiency:
+                final_gen_df = efficiency_filter(final_gen_df, model_specs.egrid_facility_efficiency_filters)
+            if (
+                model_specs.filter_on_min_plant_percent_generation_from_primary_fuel
+                and not model_specs.keep_mixed_plant_category
+            ):
                 final_gen_df = final_gen_df.loc[
                     final_gen_df["primary fuel percent gen"]
-                    >= min_plant_percent_generation_from_primary_fuel_category,
+                    >= model_specs.min_plant_percent_generation_from_primary_fuel_category,
                     :,
                 ]
             # if filter_non_egrid_emission_on_NAICS:
@@ -478,13 +474,10 @@ def eia923_generation_and_fuel(year):
             eia = pd.read_csv(
                 csv_path,
                 dtype={"Plant Id": str, "YEAR": str, "NAICS Code": str},
-                low_memory=False
+                low_memory=False,
             )
         else:
-            print(
-                "Loading data from previously downloaded excel file,",
-                " how did the csv file get deleted?",
-            )
+
             eia923_path, eia923_name = find_file_in_folder(
                 folder_path=expected_923_folder,
                 file_pattern_match=["2_3_4_5", "xlsx"],
@@ -540,13 +533,10 @@ def eia923_boiler_fuel(year):
             eia = pd.read_csv(
                 csv_path,
                 dtype={"Plant Id": str, "YEAR": str, "NAICS Code": str},
-                low_memory=False
+                low_memory=False,
             )
         else:
-            print(
-                "Loading data from previously downloaded excel file,",
-                " how did the csv file get deleted?",
-            )
+
             eia923_path, eia923_name = find_file_in_folder(
                 folder_path=expected_923_folder,
                 file_pattern_match=["2_3_4_5", "xlsx"],
@@ -602,13 +592,10 @@ def eia923_sched8_aec(year):
             eia = pd.read_csv(
                 csv_path,
                 dtype={"Plant Id": str, "YEAR": str, "NAICS Code": str},
-                low_memory=False
+                low_memory=False,
             )
         else:
-            print(
-                "Loading data from previously downloaded excel file,",
-                " how did the csv file get deleted?",
-            )
+
             eia923_path, eia923_name = find_file_in_folder(
                 folder_path=expected_923_folder,
                 file_pattern_match=["Schedule_8", "xlsx"],

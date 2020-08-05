@@ -6,10 +6,8 @@ import electricitylci.cems_data as cems
 import electricitylci.eia923_generation as eia923
 import electricitylci.eia860_facilities as eia860
 import fedelemflowlist
-from electricitylci.model_config import use_primaryfuel_for_coal
-from electricitylci.model_config import (min_plant_percent_generation_from_primary_fuel_category,
-                          filter_on_min_plant_percent_generation_from_primary_fuel,
-                          keep_mixed_plant_category)
+from electricitylci.model_config import model_specs
+
 import logging
 
 
@@ -20,19 +18,19 @@ def generate_plant_emissions(year):
     are used to calculate emissions from the plant if the fuel input from EPA
     air markets program data does not matche EIA 923 data. This data is meant
     to replace the eGRID-sourced data provided by STEWi.
-    
+
     Parameters
     ----------
     year : int
         Year of data to use (Air Markets Program Data, EIA 923, etc.)
-    
+
     Returns
     -------
     dataframe
         Returns a dataframe with emissions for all power plants reporting to
         AMPD or EIA923. Emissions are either actual measured emissions (marked
-        as Source = "cems") or from ap42 emission factors applied at either 
-        the boiler or generator fuel type level (market as Source = "ap42").
+        as Source = "cems") or from ap42 emission factors applied at either
+        the boiler or generator fuel type level (marked as Source = "ap42").
     """
     COMPARTMENT_MAP = {"emission/air": "air"}
     FUELCAT_MAP = {
@@ -694,21 +692,21 @@ def generate_plant_emissions(year):
 
     def eia_wtd_sulfur_content(eia923_boiler):
         """This function determines the weighted average sulfur content of all reported fuel types
-    reported in EIA-923 Monthly Boiler Fuel Consumption and Emissions Time Series File. 
-    Weighted average fuel sulfur content is derived via monthly fuel quantities and sulfur content reported 
-    in 'EIA-923 Monthly Boiler Fuel Consumption and Emissions Time Series File'. This approach implicitly 
-    assumes that the composition of fuels consumed in steam boilers are representative of their respective fuel class, 
+    reported in EIA-923 Monthly Boiler Fuel Consumption and Emissions Time Series File.
+    Weighted average fuel sulfur content is derived via monthly fuel quantities and sulfur content reported
+    in 'EIA-923 Monthly Boiler Fuel Consumption and Emissions Time Series File'. This approach implicitly
+    assumes that the composition of fuels consumed in steam boilers are representative of their respective fuel class,
     and can be applied to thermal generation without loss of generality. For example, the sulfur content of bitumiunous coal
     consumed for steam generators is assumed to be representative of bituminious coal consumed across other prime movers technologies
     and/or thermal generation technologies.
 
     Arguments:
-        eia923_boiler {[Dataframe]} -- This dataframe contains all information in 'EIA-923 Monthly Boiler Fuel 
+        eia923_boiler {[Dataframe]} -- This dataframe contains all information in 'EIA-923 Monthly Boiler Fuel
         Consumption and Emissions Time Series File'
 
     Returns:
-        [sulfur_content_agg] -- A 39x1 dataframe, the index represents all unqiue EIA reported fuel 
-        code types in the 'EIA-923 Monthly Boiler Fuel Consumption and Emissions Time Series File'. 
+        [sulfur_content_agg] -- A 39x1 dataframe, the index represents all unqiue EIA reported fuel
+        code types in the 'EIA-923 Monthly Boiler Fuel Consumption and Emissions Time Series File'.
         The rows represent the weigthed average sulfur fuel content for the select fuel.
         """
 
@@ -778,7 +776,7 @@ def generate_plant_emissions(year):
         return sulfur_content_agg
 
     def eia_primary_fuel(row):
-        if row["Primary Fuel %"] < min_plant_percent_generation_from_primary_fuel_category/100:
+        if row["Primary Fuel %"] < model_specs.min_plant_percent_generation_from_primary_fuel_category/100:
             return "Mixed Fuel Type"
         else:
             return row["Primary Fuel"]
@@ -1199,15 +1197,14 @@ def generate_plant_emissions(year):
         / eia_gen_fuel_net_gen_output["Annual Net Generation (MWh)"]
     )
 
-    
     eia_gen_fuel_net_gen_output = eia_gen_fuel_net_gen_output.assign(
         Primary_Fuel=eia_gen_fuel_net_gen_output.apply(
             eia_primary_fuel, axis=1
         )
     )
-    if not keep_mixed_plant_category:
+    if not model_specs.keep_mixed_plant_category:
         eia_gen_fuel_net_gen_output = eia_gen_fuel_net_gen_output.loc[
-                eia_gen_fuel_net_gen_output["Primary_Fuel"]!="Mixed Fuel Type",:
+                eia_gen_fuel_net_gen_output["Primary_Fuel"]!="Mixed Fuel Type", :
                 ]
     plant_fuel_class = eia_gen_fuel_net_gen_output[
         ["plant_id", "Primary_Fuel", "Primary Fuel %"]
@@ -1238,7 +1235,7 @@ def generate_plant_emissions(year):
         & (ampd["heat_content_mmbtu"] > 0)
     ].copy()
     ampd_rev["ampd CO2 (Tons)"] = ampd_rev["co2_mass_tons"] * pq.convert(
-        1, "ton", "Mg"
+        1, "ton", "ton"
     )
     ampd_rev["ampd SO2 (lbs)"] = ampd_rev["so2_mass_tons"] * pq.convert(
         1, "ton", "lb"
@@ -1335,7 +1332,7 @@ def generate_plant_emissions(year):
         total_criteria, "NOx_emissions_lbs"
     ] = result_agg_final.loc[total_criteria, "ampd NOX (lbs)"]
     result_agg_final.loc[
-        total_criteria,"NOx_Source"] = "ampd"
+        total_criteria, "NOx_Source"] = "ampd"
 
     result_agg_final["Net Efficiency"] = (
         result_agg_final["net_generation_megawatthours"]
@@ -1489,12 +1486,12 @@ def generate_plant_emissions(year):
     netl_harmonized_melt["FuelCategory"] = netl_harmonized_melt[
         "PrimaryFuel"
     ].map(FUELCAT_MAP)
-    if use_primaryfuel_for_coal:
-        netl_harmonized_melt.loc[
-            netl_harmonized_melt["FuelCategory"] == "COAL", "FuelCategory"
-        ] = netl_harmonized_melt.loc[
-            netl_harmonized_melt["FuelCategory"] == "COAL", "PrimaryFuel"
-        ]
+    # if model_specs.use_primaryfuel_for_coal:
+    #     netl_harmonized_melt.loc[
+    #         netl_harmonized_melt["FuelCategory"] == "COAL", "FuelCategory"
+    #     ] = netl_harmonized_melt.loc[
+    #         netl_harmonized_melt["FuelCategory"] == "COAL", "PrimaryFuel"
+    #     ]
     netl_harmonized_melt["DataCollection"] = 5
     netl_harmonized_melt["GeographicalCorrelation"] = 1
     netl_harmonized_melt["TechnologicalCorrelation"] = 1
